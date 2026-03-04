@@ -564,7 +564,7 @@
             <div style="flex: 1;"></div>
             <!-- Minutes -->
             <div class="input-group">
-                <input type="number" id="minInput" min="0" max="99" value="3">
+                <input type="text" inputmode="numeric" id="minInput" maxlength="2" value="3">
                 <div class="arrows">
                     <button class="arrow-btn" id="minUp" aria-label="Increase minutes">
                         <svg viewBox="0 0 12 12"><polyline points="2,8 6,4 10,8"/></svg>
@@ -581,7 +581,7 @@
 
             <!-- Seconds -->
             <div class="input-group">
-                <input type="number" id="secInput" min="0" max="59" value="44">
+                <input type="text" inputmode="numeric" id="secInput" maxlength="2" value="44">
                 <div class="arrows">
                     <button class="arrow-btn" id="secUp" aria-label="Increase seconds">
                         <svg viewBox="0 0 12 12"><polyline points="2,8 6,4 10,8"/></svg>
@@ -756,6 +756,132 @@
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
 
+    // Smart input handling - auto-advance and parsing
+    let hasStartedTyping = { min: false, sec: false };
+    let savedPaces = { km: { min: 3, sec: 44 }, mi: { min: 6, sec: 0 } };
+
+    function handleFocus(field) {
+        if (field === 'min') {
+            hasStartedTyping.min = false;
+            hasStartedTyping.sec = false;
+        } else if (field === 'sec' && !hasStartedTyping.min) {
+            hasStartedTyping.sec = false;
+        }
+    }
+
+    function handleInput(e, field) {
+        let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+        
+        if (field === 'min') {
+            // Clear on first keystroke
+            if (!hasStartedTyping.min && value.length > 0) {
+                value = value.slice(-1); // Keep only the last character typed
+                hasStartedTyping.min = true;
+            }
+            
+            if (value.length > 2) value = value.slice(0, 2);
+            minInput.value = value;
+            
+            // Auto-advance to seconds after 2 digits
+            if (value.length === 2) {
+                hasStartedTyping.sec = false;
+                secInput.focus();
+                secInput.select();
+            }
+        } else if (field === 'sec') {
+            // Clear on first keystroke
+            if (!hasStartedTyping.sec && value.length > 0) {
+                value = value.slice(-1); // Keep only the last character typed
+                hasStartedTyping.sec = true;
+            }
+            
+            if (value.length > 2) value = value.slice(0, 2);
+            
+            // Clamp to 59
+            const numVal = parseInt(value) || 0;
+            if (numVal > 59) {
+                value = '59';
+            }
+            
+            secInput.value = value;
+        }
+        
+        calculate();
+    }
+
+    function handlePaste(e) {
+        e.preventDefault();
+        const paste = (e.clipboardData || window.clipboardData).getData('text');
+        const cleaned = paste.replace(/\D/g, '');
+        
+        hasStartedTyping.min = true;
+        hasStartedTyping.sec = true;
+        
+        if (cleaned.length >= 3) {
+            // Parse as MMSS or MSS
+            if (cleaned.length === 3) {
+                // MSS format (e.g., 344 = 3:44)
+                minInput.value = cleaned[0];
+                secInput.value = cleaned.slice(1, 3);
+            } else if (cleaned.length === 4) {
+                // MMSS format (e.g., 0344 = 3:44)
+                const mins = cleaned.slice(0, 2);
+                const secs = cleaned.slice(2, 4);
+                minInput.value = parseInt(mins).toString();
+                secInput.value = secs;
+            } else {
+                // Take first 4 digits
+                const mins = cleaned.slice(0, 2);
+                const secs = cleaned.slice(2, 4);
+                minInput.value = parseInt(mins).toString();
+                secInput.value = secs;
+            }
+        } else if (cleaned.length === 2) {
+            minInput.value = cleaned;
+            secInput.value = '00';
+        } else if (cleaned.length === 1) {
+            minInput.value = cleaned;
+        }
+        
+        calculate();
+    }
+
+    function handleKeyDown(e, field) {
+        // Backspace on empty field moves to previous field
+        if (e.keyCode === 8 && field === 'sec' && secInput.selectionStart === 0) {
+            e.preventDefault();
+            minInput.focus();
+            minInput.setSelectionRange(minInput.value.length, minInput.value.length);
+            return;
+        }
+        
+        // Allow: backspace, delete, tab, escape, enter
+        if ([8, 9, 27, 13, 46].indexOf(e.keyCode) !== -1 ||
+            // Allow: Ctrl/cmd+A, Ctrl/cmd+C, Ctrl/cmd+V, Ctrl/cmd+X
+            (e.keyCode === 65 && (e.ctrlKey === true || e.metaKey === true)) ||
+            (e.keyCode === 67 && (e.ctrlKey === true || e.metaKey === true)) ||
+            (e.keyCode === 86 && (e.ctrlKey === true || e.metaKey === true)) ||
+            (e.keyCode === 88 && (e.ctrlKey === true || e.metaKey === true)) ||
+            // Allow: arrow keys
+            (e.keyCode >= 35 && e.keyCode <= 40)) {
+            return;
+        }
+        
+        // Ensure that it is a number
+        if ((e.shiftKey || (e.keyCode < 48 || e.keyCode > 57)) && (e.keyCode < 96 || e.keyCode > 105)) {
+            e.preventDefault();
+        }
+    }
+
+    minInput.addEventListener('focus', () => handleFocus('min'));
+    secInput.addEventListener('focus', () => handleFocus('sec'));
+    minInput.addEventListener('input', (e) => handleInput(e, 'min'));
+    secInput.addEventListener('input', (e) => handleInput(e, 'sec'));
+    minInput.addEventListener('paste', handlePaste);
+    secInput.addEventListener('paste', handlePaste);
+    minInput.addEventListener('keydown', (e) => handleKeyDown(e, 'min'));
+    secInput.addEventListener('keydown', (e) => handleKeyDown(e, 'sec'));
+
     function padSecDisplay() {
         const v = parseInt(secInput.value) || 0;
         secInput.value = v.toString().padStart(2, '0');
@@ -789,24 +915,34 @@
     }
 
     function setMode(m) {
+        // Save current values before switching
+        if (mode === 'km') {
+            savedPaces.km.min = parseInt(minInput.value) || 0;
+            savedPaces.km.sec = parseInt(secInput.value) || 0;
+        } else {
+            savedPaces.mi.min = parseInt(minInput.value) || 0;
+            savedPaces.mi.sec = parseInt(secInput.value) || 0;
+        }
+
         mode = m;
         document.getElementById('btnKm').classList.toggle('active', m === 'km');
         document.getElementById('btnMi').classList.toggle('active', m === 'mi');
 
+        // Restore saved values for new mode
         if (m === 'km') {
             inputLabel.textContent = 'Pace per km';
             paceUnit.textContent = 'min/km';
             convertedLabel.textContent = 'Per mile';
             convertedUnit.textContent = 'min/mi';
-            minInput.value = '3';
-            secInput.value = '44';
+            minInput.value = savedPaces.km.min.toString();
+            secInput.value = savedPaces.km.sec.toString().padStart(2, '0');
         } else {
             inputLabel.textContent = 'Pace per mile';
             paceUnit.textContent = 'min/mi';
             convertedLabel.textContent = 'Per km';
             convertedUnit.textContent = 'min/km';
-            minInput.value = '6';
-            secInput.value = '00';
+            minInput.value = savedPaces.mi.min.toString();
+            secInput.value = savedPaces.mi.sec.toString().padStart(2, '0');
         }
 
         calculate();
@@ -840,10 +976,6 @@
         secInput.value = v.toString().padStart(2, '0');
         calculate();
     });
-
-    secInput.addEventListener('change', padSecDisplay);
-    minInput.addEventListener('input', calculate);
-    secInput.addEventListener('input', calculate);
 
     // Init
     initTheme();
