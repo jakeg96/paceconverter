@@ -350,6 +350,59 @@
             transition: color 0.2s;
         }
 
+        /* Race times */
+        .race-times {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+            transition: border-color 0.2s;
+        }
+
+        .race-times-label {
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.9px;
+            color: var(--muted);
+            margin-bottom: 12px;
+            transition: color 0.2s;
+        }
+
+        .race-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+        }
+
+        .race-item {
+            text-align: center;
+        }
+
+        .race-distance {
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--muted);
+            margin-bottom: 4px;
+            transition: color 0.2s;
+        }
+
+        .race-time {
+            font-family: 'DM Mono', monospace;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text);
+            transition: color 0.2s;
+        }
+
+        @media (max-width: 400px) {
+            .race-grid {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 16px 12px;
+            }
+        }
+
         /* Modal */
         .modal-overlay {
             position: fixed;
@@ -518,10 +571,6 @@
             color: var(--accent);
         }
     </style>
-    <script>
-        window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
-    </script>
-    <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body>
     <div class="page-header">
@@ -623,6 +672,33 @@
                 <div class="speed-unit">m/s</div>
             </div>
         </div>
+
+        <!-- Race times -->
+        <div class="race-times">
+            <div class="race-times-label">Race times</div>
+            <div class="race-grid">
+                <div class="race-item">
+                    <div class="race-distance">5K</div>
+                    <div class="race-time" id="time5k">18:40</div>
+                </div>
+                <div class="race-item">
+                    <div class="race-distance">10K</div>
+                    <div class="race-time" id="time10k">37:20</div>
+                </div>
+                <div class="race-item">
+                    <div class="race-distance">21K</div>
+                    <div class="race-time" id="time21k">1:18:24</div>
+                </div>
+                <div class="race-item">
+                    <div class="race-distance">42K</div>
+                    <div class="race-time" id="time42k">2:36:48</div>
+                </div>
+                <div class="race-item">
+                    <div class="race-distance">50K</div>
+                    <div class="race-time" id="time50k">3:07:00</div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <footer>
@@ -675,6 +751,11 @@
     const kmhVal = document.getElementById('kmhVal');
     const mphVal = document.getElementById('mphVal');
     const msVal = document.getElementById('msVal');
+    const time5k = document.getElementById('time5k');
+    const time10k = document.getElementById('time10k');
+    const time21k = document.getElementById('time21k');
+    const time42k = document.getElementById('time42k');
+    const time50k = document.getElementById('time50k');
     const chartBtn = document.getElementById('chartBtn');
     const modalOverlay = document.getElementById('modalOverlay');
     const modalClose = document.getElementById('modalClose');
@@ -891,6 +972,35 @@
         secInput.value = v.toString().padStart(2, '0');
     }
 
+    function formatRaceTime(totalSeconds) {
+        const hours = Math.floor(totalSeconds / 3600);
+        const mins = Math.floor((totalSeconds % 3600) / 60);
+        const secs = Math.round(totalSeconds % 60);
+        
+        if (hours > 0) {
+            return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        } else {
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+    }
+
+    function calculateRaceTimes(pacePerKm) {
+        // pacePerKm is in seconds per km
+        const distances = {
+            '5k': 5,
+            '10k': 10,
+            '21k': 21.0975,
+            '42k': 42.195,
+            '50k': 50
+        };
+
+        time5k.textContent = formatRaceTime(pacePerKm * distances['5k']);
+        time10k.textContent = formatRaceTime(pacePerKm * distances['10k']);
+        time21k.textContent = formatRaceTime(pacePerKm * distances['21k']);
+        time42k.textContent = formatRaceTime(pacePerKm * distances['42k']);
+        time50k.textContent = formatRaceTime(pacePerKm * distances['50k']);
+    }
+
     function calculate() {
         const mins = parseInt(minInput.value) || 0;
         const secs = parseInt(secInput.value) || 0;
@@ -898,24 +1008,28 @@
 
         if (totalSec === 0) return;
 
-        let kmh, mph, ms, convertedSec;
+        let kmh, mph, ms, convertedSec, pacePerKm;
 
         if (mode === 'km') {
             kmh = 3600 / totalSec;
             mph = kmh * 0.621371;
             ms = kmh / 3.6;
             convertedSec = totalSec * 1.609344;
+            pacePerKm = totalSec;
         } else {
             mph = 3600 / totalSec;
             kmh = mph / 0.621371;
             ms = kmh / 3.6;
             convertedSec = totalSec / 1.609344;
+            pacePerKm = totalSec / 1.609344;
         }
 
         convertedPace.textContent = formatPace(convertedSec);
         kmhVal.textContent = fmt(kmh, 1);
         mphVal.textContent = fmt(mph, 1);
         msVal.textContent = fmt(ms, 2);
+        
+        calculateRaceTimes(pacePerKm);
     }
 
     function setMode(m) {
